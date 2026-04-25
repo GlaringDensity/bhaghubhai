@@ -376,7 +376,7 @@ const MultiLevelMap: React.FC = () => {
   const { searchQuery } = useIssueStore();
   const filteredIssues = useFilteredIssues();
   const svgRef = useRef<SVGSVGElement>(null);
-  const animRef = useRef<number>();
+  const animRef = useRef<number>(undefined as unknown as number);
   const [displayVB, setDisplayVB] = useState(India.viewBox);
   const [vbDims, setVbDims] = useState({ w: 1000, h: 1000 });
   const [hoveredState, setHoveredState] = useState<string | null>(null);
