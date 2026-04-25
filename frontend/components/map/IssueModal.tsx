@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MapPin, AlertTriangle, Info, Shield, TreePine } from 'lucide-react';
 import { useIssueStore, IssueCategory } from '@/lib/store/useIssueStore';
+import { stateCities } from '@/lib/data/stateCities';
 import { toast } from 'react-toastify';
 
 interface IssueModalProps {
@@ -41,6 +42,16 @@ const IssueModal: React.FC<IssueModalProps> = ({
       return;
     }
     setIsSubmitting(true);
+
+    // Derive latlng from city coordinates in stateCities
+    let latlng: { lat: number; lng: number } | undefined;
+    if (selectedCity && stateCities[selectedState]) {
+      const cityData = stateCities[selectedState].find(c => c.name === selectedCity);
+      if (cityData) latlng = { lat: cityData.lat, lng: cityData.lng };
+    }
+    console.log('[IssueModal] latlng:', latlng);
+    console.log('[IssueModal] pinCoords:', pinCoords);
+
     try {
       await addIssue({
         title,
@@ -52,6 +63,7 @@ const IssueModal: React.FC<IssueModalProps> = ({
         town: selectedTown || undefined,
         pinX: pinCoords?.x,
         pinY: pinCoords?.y,
+        latlng,
         status: 'New',
         votes: 0,
       });

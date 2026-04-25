@@ -21,6 +21,8 @@ export interface Issue {
   town?: string;
   pinX?: number;
   pinY?: number;
+  // Geographic coordinates for Leaflet
+  latlng?: { lat: number; lng: number };
   createdAt: string;
   updatedAt: string;
 }

@@ -29,8 +29,7 @@ const IssueCard: React.FC<IssueCardProps> = ({ issue }) => {
 
   return (
     <motion.div
-      layoutId={issue._id}
-      className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group"
+      className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all group select-none"
     >
       <div className="flex justify-between items-start mb-3">
         <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md border ${style.bg} ${style.color} ${style.border}`}>
@@ -50,9 +49,11 @@ const IssueCard: React.FC<IssueCardProps> = ({ issue }) => {
       </p>
 
       <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700">
-        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
-          <MapPin size={12} className="text-blue-500" />
-          <span className="text-[10px] font-medium">{issue.location}</span>
+        <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 min-w-0">
+          <MapPin size={12} className="text-blue-500 flex-shrink-0" />
+          <span className="text-[10px] font-medium truncate">
+            {[issue.town, issue.city, issue.state].filter(Boolean).join(' › ') || issue.location}
+          </span>
         </div>
 
         <button
