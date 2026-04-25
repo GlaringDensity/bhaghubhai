@@ -82,12 +82,14 @@ export default function HomePage() {
   ];
 
   return (
-    <main className={`min-h-screen bg-[#F8FAFC] dark:bg-[#05050A] text-[#0F172A] dark:text-[#F8FAFC] transition-colors duration-500 pt-32 pb-20 ${spaceGrotesk.className}`}>
+    <main className={`min-h-screen relative bg-[#F8FAFC] dark:bg-[#05050A] text-[#0F172A] dark:text-[#F8FAFC] transition-colors duration-500 pt-32 pb-20 ${spaceGrotesk.className}`}>
       
       {/* Dynamic Background Glows */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-cyan-400/20 dark:bg-cyan-600/20 blur-[150px] pointer-events-none" />
-      <div className="absolute top-[20%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-fuchsia-500/20 dark:bg-fuchsia-600/20 blur-[150px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] left-[20%] w-[50vw] h-[50vw] rounded-full bg-blue-500/10 dark:bg-blue-600/20 blur-[150px] pointer-events-none" />
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-cyan-400/20 dark:bg-cyan-600/20 blur-[150px]" />
+        <div className="absolute top-[20%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-fuchsia-500/20 dark:bg-fuchsia-600/20 blur-[150px]" />
+        <div className="absolute bottom-[-10%] left-[20%] w-[50vw] h-[50vw] rounded-full bg-blue-500/10 dark:bg-blue-600/20 blur-[150px]" />
+      </div>
 
       {/* Hero Section */}
       <section className="relative z-10 flex flex-col items-center min-h-[90vh] px-6 text-center max-w-7xl mx-auto">
@@ -221,20 +223,20 @@ export default function HomePage() {
           whileInView="visible"
           viewport={{ once: true }}
           variants={staggerContainer}
-          className="grid md:grid-cols-2 gap-8 lg:gap-10"
+          className="flex overflow-x-auto snap-x snap-mandatory pb-8 -mx-6 px-6 gap-6 sm:mx-0 sm:px-0 sm:pb-0 sm:grid sm:grid-cols-2 sm:gap-8 lg:gap-10 scrollbar-hide"
         >
           {features.map((feature, idx) => (
             <motion.div
               key={idx}
               variants={fadeIn}
-              className="relative p-10 rounded-[2rem] bg-white dark:bg-[#0B0F19] border border-[#E2E8F0] dark:border-white/10 shadow-lg hover:shadow-2xl transition-all duration-500 group overflow-hidden"
+              className="relative flex-none w-[85vw] snap-center sm:w-auto p-8 sm:p-10 rounded-3xl sm:rounded-[2rem] bg-white dark:bg-[#0B0F19] border border-[#E2E8F0] dark:border-white/10 shadow-lg hover:shadow-2xl transition-all duration-500 group overflow-hidden"
             >
               <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${feature.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white bg-gradient-to-br ${feature.gradient} mb-8 group-hover:scale-110 transition-transform duration-500 shadow-lg`}>
+              <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-white bg-gradient-to-br ${feature.gradient} mb-6 sm:mb-8 group-hover:scale-110 transition-transform duration-500 shadow-lg`}>
                 {feature.icon}
               </div>
-              <h3 className={`text-3xl font-bold mb-4 ${outfit.className}`}>{feature.title}</h3>
-              <p className="text-[#64748B] dark:text-[#94A3B8] text-lg leading-relaxed">{feature.description}</p>
+              <h3 className={`text-2xl sm:text-3xl font-bold mb-3 sm:mb-4 ${outfit.className}`}>{feature.title}</h3>
+              <p className="text-[#64748B] dark:text-[#94A3B8] text-base sm:text-lg leading-relaxed">{feature.description}</p>
             </motion.div>
           ))}
         </motion.div>

@@ -9,16 +9,20 @@ import {
   IoCheckmarkDone,
 } from "react-icons/io5";
 import { Square, X, Trash2 } from "lucide-react";
+import { Outfit, Space_Grotesk } from 'next/font/google';
+
+const outfit = Outfit({ subsets: ['latin'], display: 'swap' });
+const spaceGrotesk = Space_Grotesk({ subsets: ['latin'], display: 'swap' });
 
 function DoctorCard({ places, doctorType, location }: any) {
   return (
     <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 space-y-4 shadow-xl">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-[#00ff87]/20 flex items-center justify-center text-xl">
-          👨‍⚕️
+        <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center text-xl">
+          🏛️
         </div>
         <div>
-          <h3 className="font-bold text-[#00ff87] text-sm uppercase tracking-wider">
+          <h3 className={`font-bold text-cyan-500 text-sm uppercase tracking-wider ${outfit.className}`}>
             {doctorType}
           </h3>
           <p className="text-[10px] text-gray-400 uppercase tracking-widest">{location}</p>
@@ -32,13 +36,13 @@ function DoctorCard({ places, doctorType, location }: any) {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: idx * 0.1 }}
-              className="bg-white/5 p-4 rounded-xl border border-white/5 hover:border-[#00ff87]/40 hover:bg-white/10 transition-all group cursor-pointer"
+              className="bg-white/5 p-4 rounded-xl border border-white/5 hover:border-cyan-500/40 hover:bg-white/10 transition-all group cursor-pointer"
             >
               <a
                 href={place.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white font-semibold hover:text-[#00ff87] text-sm mb-1 block transition-colors"
+                className={`text-white font-semibold hover:text-cyan-500 text-sm mb-1 block transition-colors ${outfit.className}`}
               >
                 {place.name}
               </a>
@@ -56,16 +60,16 @@ function SummaryCard({ summary, itemCount, type }: any) {
   const config = (
     {
       doctor: {
-        bg: "bg-[#00ff87]/5",
-        border: "border-[#00ff87]/20",
-        text: "text-[#00ff87]",
+        bg: "bg-cyan-500/5",
+        border: "border-cyan-500/20",
+        text: "text-cyan-500",
         icon: "✨",
       },
       disease: {
-        bg: "bg-[#00e5ff]/5",
-        border: "border-[#00e5ff]/20",
-        text: "text-[#00e5ff]",
-        icon: "🧬",
+        bg: "bg-fuchsia-500/5",
+        border: "border-fuchsia-500/20",
+        text: "text-fuchsia-500",
+        icon: "📍",
       },
     } as Record<string, any>
   )[type] || {
@@ -81,7 +85,7 @@ function SummaryCard({ summary, itemCount, type }: any) {
     >
       <div className="flex items-center gap-2">
         <span className="text-lg">{config.icon}</span>
-        <h3 className={`font-bold text-xs uppercase tracking-widest ${config.text}`}>
+        <h3 className={`font-bold text-xs uppercase tracking-widest ${config.text} ${outfit.className}`}>
           Insight Summary ({itemCount})
         </h3>
       </div>
@@ -96,10 +100,10 @@ function LoadingCard({ message }: { message: string }) {
   return (
     <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 flex items-center gap-3 shadow-lg">
       <div className="relative">
-        <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#00ff87] border-t-transparent" />
-        <div className="absolute inset-0 rounded-full bg-[#00ff87]/20 blur-sm animate-pulse" />
+        <div className="animate-spin rounded-full h-5 w-5 border-2 border-cyan-500 border-t-transparent" />
+        <div className="absolute inset-0 rounded-full bg-cyan-500/20 blur-sm animate-pulse" />
       </div>
-      <span className="text-xs text-[#00ff87] font-bold uppercase tracking-widest">{message}</span>
+      <span className={`text-xs text-cyan-500 font-bold uppercase tracking-widest ${outfit.className}`}>{message}</span>
     </div>
   );
 }
@@ -124,8 +128,8 @@ function MessageBubble({ message }: any) {
       <div
         className={`relative group max-w-[85%] sm:max-w-[75%] ${
           isUser
-            ? "bg-[#00ff87] text-black rounded-2xl rounded-tr-sm font-medium"
-            : "bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-gray-100 rounded-2xl rounded-tl-sm"
+            ? "bg-cyan-500 text-white rounded-2xl rounded-tr-sm font-medium"
+            : "bg-white dark:bg-[#0B0F19] border border-slate-200 dark:border-white/10 text-slate-800 dark:text-gray-100 rounded-2xl rounded-tl-sm"
         } px-4 py-3 shadow-lg overflow-hidden`}
       >
 
@@ -157,7 +161,7 @@ function MessageBubble({ message }: any) {
                         return (
                           <div
                             key={`${message.id}-getDoctor-${index}`}
-                            className="text-[10px] uppercase tracking-widest bg-[#00ff87]/10 border border-[#00ff87]/30 px-4 py-3 rounded-xl font-bold text-[#00ff87]"
+                            className={`text-[10px] uppercase tracking-widest bg-cyan-500/10 border border-cyan-500/30 px-4 py-3 rounded-xl font-bold text-cyan-500 ${outfit.className}`}
                           >
                             🔍 Locating {part.input.doctorType} in {part.input.location}
                           </div>
@@ -302,25 +306,25 @@ export default function ChatUi() {
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 20, scale: 0.95 }}
-              className="fixed bottom-20 right-4 sm:bottom-24 sm:right-8 z-50 flex items-end justify-end w-[calc(100%-2rem)] sm:w-[380px]"
+              className={`fixed bottom-20 right-4 sm:bottom-24 sm:right-8 z-50 flex items-end justify-end w-[calc(100%-2rem)] sm:w-[380px] ${spaceGrotesk.className}`}
             >
-              <div className="w-full h-[500px] sm:h-[600px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden relative">
+              <div className="w-full h-[500px] sm:h-[600px] bg-white dark:bg-[#05050A] border border-slate-200 dark:border-white/10 rounded-2xl sm:rounded-[2rem] shadow-2xl flex flex-col overflow-hidden relative">
                 {/* Decorative Elements */}
 
 
                 {/* Header */}
-                <div className="px-6 py-4 flex items-center justify-between shrink-0 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
+                <div className="px-6 py-4 flex items-center justify-between shrink-0 bg-slate-50 dark:bg-[#0B0F19] border-b border-slate-200 dark:border-white/10">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-900 dark:text-white shadow-sm">
+                    <div className="w-10 h-10 bg-cyan-50 dark:bg-cyan-500/10 rounded-xl flex items-center justify-center text-cyan-600 dark:text-cyan-400 shadow-sm">
                       <IoChatbubbles size={20} />
                     </div>
                     <div>
-                      <h3 className="font-bold text-slate-900 dark:text-white tracking-tight">
-                        Chat
+                      <h3 className={`font-bold text-slate-900 dark:text-white tracking-tight ${outfit.className}`}>
+                        Polis Assistant
                       </h3>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <div className="w-2 h-2 rounded-full bg-[#00ff87] animate-pulse" />
-                        <p className="text-[10px] font-medium text-slate-500 dark:text-gray-400">
+                        <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                        <p className="text-[10px] font-medium text-slate-500 dark:text-gray-400 uppercase tracking-widest">
                           Online
                         </p>
                       </div>
@@ -339,25 +343,25 @@ export default function ChatUi() {
                 <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 relative z-10 scrollbar-hide">
                   {messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-center p-6">
-                      <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-6">
-                        <IoChatbubbles size={32} className="text-[#00ff87]" />
+                      <div className="w-16 h-16 bg-cyan-50 dark:bg-cyan-500/10 rounded-2xl flex items-center justify-center mb-6">
+                        <IoChatbubbles size={32} className="text-cyan-500" />
                       </div>
-                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">
+                      <h3 className={`text-2xl font-black text-slate-900 dark:text-white mb-2 ${outfit.className}`}>
                         How can I help?
                       </h3>
                       <p className="text-sm text-slate-500 dark:text-gray-400 mb-8">
-                        Ask about symptoms or find specialists.
+                        Ask about tracking civic issues or finding local authorities.
                       </p>
-                      <div className="w-full space-y-2">
+                      <div className="w-full space-y-3">
                         {[
-                          "Find a General Physician",
-                          "Analyze my symptoms",
-                          "Nearest Cardiology clinic",
+                          "How do I report a pothole?",
+                          "Show me issues in my locality",
+                          "How does community upvoting work?",
                         ].map((text, i) => (
                           <button
                             key={i}
                             onClick={() => setInput(text)}
-                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-sm text-slate-700 dark:text-gray-300 transition-colors text-left font-medium"
+                            className="w-full px-5 py-4 border border-slate-200 dark:border-white/10 hover:border-cyan-500/50 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 rounded-xl text-sm text-slate-700 dark:text-gray-300 transition-all text-left font-medium shadow-sm"
                           >
                             {text}
                           </button>
@@ -378,12 +382,12 @@ export default function ChatUi() {
                       animate={{ opacity: 1, x: 0 }}
                       className="flex justify-start px-4"
                     >
-                      <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2 rounded-xl flex items-center gap-3 shadow-xl">
-                        <div className="animate-spin rounded-full h-3 w-3 border-2 border-[#00ff87] border-t-transparent" />
-                        <span className="text-[10px] text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider">Processing</span>
+                      <div className="bg-slate-50 dark:bg-[#0B0F19] border border-slate-200 dark:border-white/10 px-4 py-2 rounded-xl flex items-center gap-3 shadow-xl">
+                        <div className="animate-spin rounded-full h-3 w-3 border-2 border-cyan-500 border-t-transparent" />
+                        <span className={`text-[10px] text-slate-500 dark:text-gray-400 font-bold uppercase tracking-wider ${outfit.className}`}>Processing</span>
                         <button
                           onClick={stop}
-                          className="ml-4 px-3 py-1 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-[10px] font-black hover:bg-red-500/20 uppercase transition-all"
+                          className={`ml-4 px-3 py-1 bg-fuchsia-500/10 border border-fuchsia-500/20 text-fuchsia-400 rounded-lg text-[10px] font-black hover:bg-fuchsia-500/20 uppercase transition-all ${outfit.className}`}
                         >
                           Abort
                         </button>
@@ -395,7 +399,7 @@ export default function ChatUi() {
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800">
+                <div className="p-4 bg-slate-50 dark:bg-[#0B0F19] border-t border-slate-200 dark:border-white/10">
                   <form 
                     className="flex items-center gap-2" 
                     onSubmit={onSubmit}
@@ -406,12 +410,12 @@ export default function ChatUi() {
                       onChange={(e) => setInput(e.target.value)}
                       disabled={isLoading}
                       placeholder="Type a message..."
-                      className="flex-1 h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:border-[#00ff87] transition-all text-sm shadow-inner"
+                      className={`flex-1 h-12 px-4 rounded-xl bg-white dark:bg-[#020617] border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/50 transition-all text-sm shadow-inner ${outfit.className}`}
                     />
                     <button
                       type="submit"
                       disabled={sendButtonDisabled}
-                      className="w-12 h-12 bg-slate-900 dark:bg-white text-white dark:text-black rounded-xl flex items-center justify-center disabled:opacity-50 transition-all shadow-lg"
+                      className="w-12 h-12 bg-slate-900 dark:bg-white text-white dark:text-black rounded-xl flex items-center justify-center disabled:opacity-50 transition-all shadow-lg hover:bg-cyan-600 dark:hover:bg-cyan-500 dark:hover:text-white"
                     >
                       <IoSend size={20} />
                     </button>

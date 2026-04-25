@@ -58,10 +58,12 @@ export default function ContactUsPage() {
   };
 
   return (
-    <main className={`min-h-screen bg-[#F8FAFC] dark:bg-[#05050A] text-[#0F172A] dark:text-[#F8FAFC] transition-colors duration-500 pt-36 pb-24 relative ${spaceGrotesk.className}`}>
+    <main className={`min-h-screen relative bg-[#F8FAFC] dark:bg-[#05050A] text-[#0F172A] dark:text-[#F8FAFC] transition-colors duration-500 pt-36 pb-24 ${spaceGrotesk.className}`}>
       {/* Background Glows */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-cyan-400/20 dark:bg-cyan-600/20 blur-[150px] pointer-events-none" />
-      <div className="absolute bottom-[20%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-fuchsia-500/10 dark:bg-fuchsia-600/15 blur-[150px] pointer-events-none" />
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-cyan-400/20 dark:bg-cyan-600/20 blur-[150px]" />
+        <div className="absolute bottom-[20%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-fuchsia-500/10 dark:bg-fuchsia-600/15 blur-[150px]" />
+      </div>
 
       <div className="max-w-7xl mx-auto px-6 relative z-10">
         

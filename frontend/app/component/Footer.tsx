@@ -21,9 +21,10 @@ const Footer = () => {
               <Image
                 src="/images/cicvicsync.png"
                 alt="CivicSync Logo"
-                width={180}
+                width={240}
                 height={72}
-                className="object-contain dark:invert"
+                className="h-12 sm:h-16 w-auto object-contain dark:invert -ml-2"
+                priority
               />
             </div>
             <p className="text-[#64748B] dark:text-[#94A3B8] text-sm leading-relaxed max-w-xs">
