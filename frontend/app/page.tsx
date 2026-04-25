@@ -36,7 +36,7 @@ export default function HomePage() {
 
   const fadeIn = {
     hidden: { opacity: 0, y: 30 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } }
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] } }
   };
 
   const staggerContainer = {
@@ -155,7 +155,7 @@ export default function HomePage() {
           style={{ y }}
           initial={{ opacity: 0, y: 100 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2, delay: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 1.2, delay: 0.4, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] }}
           className="w-full max-w-6xl rounded-[2.5rem] overflow-hidden border border-[#E2E8F0] dark:border-[#1E293B] shadow-2xl shadow-slate-200/50 dark:shadow-cyan-900/20 bg-white dark:bg-[#0F172A] relative group"
         >
           <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
