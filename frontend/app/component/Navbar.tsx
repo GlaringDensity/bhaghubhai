@@ -8,16 +8,19 @@ import { useTheme } from "next-themes";
 import { HiSun, HiMoon } from "react-icons/hi";
 import LoginButton from "./LoginButton";
 import Language from "./Language";
+import { useSelector } from "react-redux";
 import {
   IoHomeOutline,
   IoPerson,
   IoMailOutline,
+  IoMapOutline,
 } from "react-icons/io5";
 import { Outfit } from 'next/font/google';
 
 const outfit = Outfit({ subsets: ['latin'], display: 'swap' });
 
 const Navbar = () => {
+  const userData = useSelector((state: any) => state.user.userData);
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
@@ -89,6 +92,7 @@ const Navbar = () => {
 
   const navLinks = [
     { name: "Home", href: "/", icon: <IoHomeOutline size={18} /> },
+    ...(userData ? [{ name: "Map", href: "/map", icon: <IoMapOutline size={18} /> }] : []),
     { name: "About", href: "/About", icon: <IoPerson size={18} /> },
     { name: "Contact", href: "/ContactUs", icon: <IoMailOutline size={18} /> },
   ];

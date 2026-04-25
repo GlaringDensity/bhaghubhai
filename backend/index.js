@@ -4,6 +4,7 @@ import ConnectDB from "./config/Db.js";
 import AuthRouter from "./routes/auth.routes.js";
 import cors from "cors";
 import UserRouter from "./routes/user.routes.js";
+import IssueRouter from "./routes/issue.routes.js";
 import cookieParser from "cookie-parser";
 import { promises as dns } from "dns";
 dotenv.config();
@@ -31,6 +32,7 @@ app.use(
 );
 app.use("/api/auth", AuthRouter);
 app.use("/api/user", UserRouter);
+app.use("/api/issues", IssueRouter);
 
 app.get("/", (req, res) => {
   res.send("API is running...");
