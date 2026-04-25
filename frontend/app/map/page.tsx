@@ -31,7 +31,7 @@ const MapPage = () => {
   const userData = useSelector((state: any) => state.user.userData);
   const [view, setView] = useState<ViewMode>('map');
   const [mapMode, setMapMode] = useState<MapMode>('svg');
-  const { fetchIssues } = useIssueStore();
+  const { fetchIssues, searchQuery, setSearchQuery } = useIssueStore();
 
   useEffect(() => {
     if (!userData) {
@@ -92,9 +92,20 @@ const MapPage = () => {
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search issues by title, city, or state..."
-              className="w-full h-11 pl-11 pr-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm font-medium dark:text-white"
+              className="w-full h-11 pl-11 pr-10 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm font-medium dark:text-white"
             />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <Search size={14} className="rotate-45" /> {/* Close icon using rotated search icon or just an X */}
+                <span className="text-lg font-light leading-none">×</span>
+              </button>
+            )}
           </div>
 
           {view === 'map' && (

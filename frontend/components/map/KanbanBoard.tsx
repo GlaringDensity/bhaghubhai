@@ -13,7 +13,7 @@ import {
   DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { useIssueStore, Issue, IssueStatus } from '@/lib/store/useIssueStore';
+import { useIssueStore, useFilteredIssues, Issue, IssueStatus } from '@/lib/store/useIssueStore';
 import { ThumbsUp, MapPin, Clock, CheckCircle2, AlertCircle, TrendingUp } from 'lucide-react';
 
 const COLUMNS: { id: IssueStatus; label: string; color: string; bg: string; icon: any }[] = [
@@ -173,8 +173,10 @@ const DroppableColumn = ({ col, issues, totalIssues }: {
 };
 
 // ─── Kanban Board ─────────────────────────────────────────────────────────────
+
 const KanbanBoard = () => {
-  const { issues, updateStatus } = useIssueStore();
+  const { issues, updateStatus, searchQuery } = useIssueStore();
+  const filteredIssues = useFilteredIssues();
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
 
   const sensors = useSensors(
@@ -189,7 +191,6 @@ const KanbanBoard = () => {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveIssue(null);
-    console.log('[Kanban] drag end — active:', active.id, '| over:', over?.id);
     if (!over) return;
     const newStatus = String(over.id) as IssueStatus;
     if (!['New', 'In Progress', 'Resolved'].includes(newStatus)) return;
@@ -200,6 +201,16 @@ const KanbanBoard = () => {
 
   const resolved = issues.filter(i => i.status === 'Resolved').length;
   const resolutionRate = issues.length > 0 ? Math.round((resolved / issues.length) * 100) : 0;
+
+  if (searchQuery && filteredIssues.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[500px] rounded-3xl bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800">
+        <div className="text-4xl mb-4">🔍</div>
+        <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">No issues found</h3>
+        <p className="text-slate-500 text-sm mt-1">Try searching for a different title, city, or category.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -234,8 +245,8 @@ const KanbanBoard = () => {
             <DroppableColumn
               key={col.id}
               col={col}
-              issues={issues.filter(i => i.status === col.id)}
-              totalIssues={issues.length}
+              issues={filteredIssues.filter(i => i.status === col.id)}
+              totalIssues={filteredIssues.length}
             />
           ))}
         </div>

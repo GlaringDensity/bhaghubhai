@@ -1,6 +1,7 @@
 import Issue from "../models/issue.model.js";
 import { generateIssuePDF } from "../services/pdfService.js";
 import { sendIssueCreatedEmail } from "../services/emailService.js";
+import { generateAIReport } from "../services/aiService.js";
 
 // ── Helper: fire notifications after issue creation ───────────────────────────
 const dispatchNotifications = (issue, pdfBuffer) => {
@@ -56,15 +57,16 @@ export const createIssue = async (req, res) => {
     res.status(201).json(newIssue);
 
     // Generate PDF + dispatch all notifications asynchronously
-    let pdfBuffer = null;
-    try {
-      pdfBuffer = generateIssuePDF(newIssue.toObject());
-      console.log("[Issue] ✅ PDF generated");
-    } catch (pdfErr) {
-      console.error("[Issue] ❌ PDF generation failed:", pdfErr.message);
-    }
-
-    dispatchNotifications(newIssue.toObject(), pdfBuffer);
+    setImmediate(async () => {
+      try {
+        const aiReport = await generateAIReport(newIssue.toObject());
+        const pdfBuffer = generateIssuePDF(newIssue.toObject(), aiReport);
+        console.log("[Issue] ✅ AI Report + PDF generated");
+        dispatchNotifications(newIssue.toObject(), pdfBuffer);
+      } catch (err) {
+        console.error("[Issue] ❌ Async processing failed:", err.message);
+      }
+    });
 
   } catch (error) {
     console.error("[Issue] ❌ Create error:", error);
@@ -145,9 +147,10 @@ export const downloadIssuePDF = async (req, res) => {
     const issue = await Issue.findById(id);
     if (!issue) return res.status(404).json({ message: "Issue not found" });
 
-    const pdfBuffer = generateIssuePDF(issue.toObject());
+    const aiReport = await generateAIReport(issue.toObject());
+    const pdfBuffer = generateIssuePDF(issue.toObject(), aiReport);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="issue-${id}.pdf"`);
+    res.setHeader("Content-Disposition", `attachment; filename="report-${id}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
     console.error("[Issue] ❌ PDF download error:", error);

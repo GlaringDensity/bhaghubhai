@@ -1,3 +1,4 @@
+import React from 'react';
 import { create } from 'zustand';
 import axios from 'axios';
 
@@ -29,16 +30,19 @@ export interface Issue {
 
 interface IssueStore {
   issues: Issue[];
+  searchQuery: string;
   isLoading: boolean;
   error: string | null;
   fetchIssues: () => Promise<void>;
   addIssue: (issueData: Partial<Issue>) => Promise<void>;
   updateStatus: (id: string, status: IssueStatus) => Promise<void>;
   upvoteIssue: (id: string) => Promise<void>;
+  setSearchQuery: (query: string) => void;
 }
 
 export const useIssueStore = create<IssueStore>((set, get) => ({
   issues: [],
+  searchQuery: '',
   isLoading: false,
   error: null,
 
@@ -81,4 +85,20 @@ export const useIssueStore = create<IssueStore>((set, get) => ({
       set({ issues: previousIssues });
     }
   },
+  setSearchQuery: (query) => set({ searchQuery: query }),
 }));
+
+export const useFilteredIssues = () => {
+  const { issues, searchQuery } = useIssueStore();
+  return React.useMemo(() => {
+    if (!searchQuery) return issues;
+    const query = searchQuery.toLowerCase();
+    return issues.filter((i) => 
+      i.title?.toLowerCase().includes(query) ||
+      i.city?.toLowerCase().includes(query) ||
+      i.state?.toLowerCase().includes(query) ||
+      i.town?.toLowerCase().includes(query) ||
+      i.category?.toLowerCase().includes(query)
+    );
+  }, [issues, searchQuery]);
+};

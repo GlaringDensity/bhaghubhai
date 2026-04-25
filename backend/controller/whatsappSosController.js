@@ -1,402 +1,323 @@
 /**
- * WhatsApp SOS Controller
- *
- * Handles incoming WhatsApp messages via Whapi webhook.
- * Flow: User sends "hi" / "sos" → SOS session created → collects Location + Text + Image → /submit
- *
- * Depends on:
- *   models/issue.model.js       (or swap for your Incident model)
- *   utils/session-manager.js
- *   utils/whapi.js              (sendAutoReply, downloadMediaAsBase64)
- *
- * Optional AI enrichment (gracefully skipped if unavailable):
- *   utils/ai-analysis.js        (analyzeVision, processTextIntelligence)
- *   utils/forensics.js          (analyzeForensics)
+ * whatsappSosController.js
+ * 
+ * Enhanced WhatsApp bot with:
+ * - Whitelist restriction
+ * - Command-based menu (Report, Status, View)
+ * - Session-based reporting flow
+ * - AI-powered incident analysis (Gemma)
  */
 
 import Issue from "../models/issue.model.js";
+import { sendWhatsAppMessage } from "../services/whatsappService.js";
 import { getSession, setSession, deleteSession } from "../utils/session-manager.js";
-import { sendAutoReply, downloadMediaAsBase64 } from "../utils/whapi.js";
+import { generateIssuePDF } from "../services/pdfService.js";
+import { sendIssueCreatedEmail } from "../services/emailService.js";
+import { generateAIReport } from "../services/aiService.js";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-// ── Optional AI modules (fail gracefully if not installed) ────────────────────
-let analyzeVision, processTextIntelligence, analyzeForensics;
-try {
-  const aiMod = await import("../utils/ai-analysis.js");
-  analyzeVision = aiMod.analyzeVision;
-  processTextIntelligence = aiMod.processTextIntelligence;
-  const forensicsMod = await import("../utils/forensics.js");
-  analyzeForensics = forensicsMod.default?.analyzeForensics ?? forensicsMod.analyzeForensics;
-} catch {
-  console.warn("[WhatsApp SOS] ⚠️  AI modules not found — analysis disabled");
-}
+const WHITELISTED_PHONE = process.env.WHITELISTED_PHONE;
+const CATEGORIES = ["Infrastructure", "Sanitation", "Safety", "Greenery"];
 
-// ── Deduplication set (prevents double-processing same message ID) ────────────
+// ── Dedup ─────────────────────────────────────────────────────────────────────
 const processedIds = new Set();
-
 function trackMessage(id) {
   if (!id || processedIds.has(id)) return false;
   processedIds.add(id);
-  if (processedIds.size > 500) {
+  if (processedIds.size > 1000) {
     const first = processedIds.values().next().value;
     if (first) processedIds.delete(first);
   }
   return true;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helper: extract phone ─────────────────────────────────────────────────────
 const extractPhone = (chatId) => chatId?.match(/(\d{10,15})@/)?.[1] ?? null;
 
-const buildProgress = (session) => {
-  const m = session.incidentData.mediaUploaded;
-  const hasLoc  = m.includes("location");
-  const hasText = m.includes("text");
-  const hasImg  = m.includes("image");
-
-  let msg = `📊 *Progress (ALL MANDATORY):*\n`;
-  msg += `   ${hasLoc  ? "✅" : "❌"} Location\n`;
-  msg += `   ${hasText ? "✅" : "❌"} Description\n`;
-  msg += `   ${hasImg  ? "✅" : "❌"} Photo\n\n`;
-
-  if (hasLoc && hasText && hasImg) {
-    msg += `🟢 *Ready!* Type *SUBMIT* to file your report.`;
-  } else {
-    const needed = [];
-    if (!hasLoc)  needed.push("📍 Location");
-    if (!hasText) needed.push("💬 Description");
-    if (!hasImg)  needed.push("📸 Photo");
-    msg += `🔴 *Still need:* ${needed.join(" + ")}`;
+// ── Helper: reply ─────────────────────────────────────────────────────────────
+const reply = async (chatId, phone, text) => {
+  try {
+    await sendWhatsAppMessage(phone, text);
+  } catch (err) {
+    console.warn("[WA BOT] Reply failed:", err.message);
   }
-  return msg;
-};
-
-const defaultForensics = () => ({
-  realismFactor: 1.0, isFake: false, confidenceScore: 0,
-  isPocket: false, verdict: "WhatsApp submission", deepfakeIndicators: [],
-});
-
-const defaultVision = () => ({ detected: [], confidence: 0, model: "WhatsApp" });
-
-// ── Keyword-based type detection (fallback when AI disabled) ──────────────────
-const detectTypeFromText = (text) => {
-  const t = text.toLowerCase();
-  if (t.includes("fire") || t.includes("burning"))               return "Fire";
-  if (t.includes("flood") || t.includes("water"))                return "Flood";
-  if (t.includes("accident") || t.includes("crash"))             return "Traffic Accident";
-  if (t.includes("medical") || t.includes("injury") || t.includes("blood")) return "Medical Emergency";
-  if (t.includes("building") || t.includes("collapse"))          return "Infrastructure";
-  return "Other";
-};
-
-// ── Severity from keywords ────────────────────────────────────────────────────
-const detectSeverity = (text) => {
-  const t = text.toLowerCase();
-  if (["dying","dead","trapped","collapse","explosion"].some(w => t.includes(w))) return "Critical";
-  if (["fire","blood","injury","crash","burning","flood"].some(w => t.includes(w)))  return "High";
-  if (["help","emergency","hurt","broken"].some(w => t.includes(w)))                 return "Medium";
-  return "Low";
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// WEBHOOK ENTRY POINT
+//  WEBHOOK ENTRY
 // ═══════════════════════════════════════════════════════════════════════════════
 export const handleIncomingWhatsAppMessage = async (req, res) => {
-  // Always respond 200 immediately so Whapi doesn't retry
   res.status(200).json({ success: true });
-
   const { messages } = req.body;
   if (!messages?.length) return;
 
-  console.log(`\n[WhatsApp SOS] 📨 ${messages.length} message(s) received`);
-
-  for (const message of messages) {
+  for (const msg of messages) {
     try {
-      await processMessage(message);
+      await processMessage(msg);
     } catch (err) {
-      console.error(`[WhatsApp SOS] ❌ Message ${message.id} error:`, err.message);
+      console.error(`[WA BOT] ❌ Error:`, err.message);
     }
   }
 };
 
-// ── Route each incoming message ───────────────────────────────────────────────
+// ── Route message ─────────────────────────────────────────────────────────────
 async function processMessage(message) {
-  if (message.from_me) return; // skip our own outgoing messages
-  if (!trackMessage(message.id)) return; // skip duplicates
+  if (message.from_me) return;
+  if (!trackMessage(message.id)) return;
 
-  const senderChatId = message.chat_id || message.from;
-  const phone = extractPhone(senderChatId);
-  if (!phone) {
-    console.warn("[WhatsApp SOS] ⚠️  Could not extract phone from:", senderChatId);
+  const chatId = message.chat_id || message.from;
+  const phone = extractPhone(chatId);
+  if (!phone) return;
+
+  // 🔐 WHITELIST RESTRICTION
+  if (WHITELISTED_PHONE && phone !== WHITELISTED_PHONE) {
+    console.log(`[WA BOT] 🚫 Ignoring non-whitelisted phone: ${phone}`);
     return;
   }
 
-  const type    = message.type;
-  const body    = (message.text?.body || "").trim();
-  const lower   = body.toLowerCase();
+  const type = message.type;
+  if (type !== "text") return; // Only process text
 
-  console.log(`[WhatsApp SOS] 📱 [${phone}] type=${type} body="${body.slice(0, 50)}"`);
+  const body = (message.text?.body || "").trim();
+  if (!body) return;
 
-  // Trigger: "hi" or "sos" starts a new session
-  if (type === "text" && (lower === "hi" || lower === "sos")) {
-    return handleTrigger(phone, senderChatId);
+  const lower = body.toLowerCase();
+  console.log(`[WA BOT] 📱 [${phone}] body="${body}"`);
+
+  // ── MENU / START ────────────────────────────────────────────────────────────
+  if (lower === "hi" || lower === "hello" || lower === "menu") {
+    await deleteSession(phone);
+    return sendMenu(chatId, phone);
   }
 
+  // ── VIEW ISSUES ─────────────────────────────────────────────────────────────
+  if (lower === "issues" || lower === "3") {
+    return handleViewIssues(chatId, phone);
+  }
+
+  // ── CHECK STATUS ────────────────────────────────────────────────────────────
+  if (lower.startsWith("status") || lower === "2") {
+    const parts = body.split(" ");
+    if (parts.length > 1) {
+      return handleCheckStatus(chatId, phone, parts[1]);
+    }
+    // If just "2" or "status", ask for ID
+    const session = await getSession(phone);
+    if (!session || session.step !== "check_status") {
+      await setSession(phone, { step: "check_status" });
+      return reply(chatId, phone, "🔍 Please enter the Issue ID or the last 6 characters of the ID.");
+    }
+  }
+
+  // ── SESSION HANDLING ────────────────────────────────────────────────────────
   const session = await getSession(phone);
+
   if (!session) {
-    console.log("[WhatsApp SOS] ⏭️  No active session — ignoring");
-    return;
+    if (lower === "1" || lower.includes("report")) {
+      return startReportingFlow(chatId, phone);
+    }
+    return reply(chatId, phone, "👋 Welcome back! Send *hi* or *menu* to see available options.");
   }
 
-  // Commands inside an active session
-  if (type === "text" && ["submit","confirm","done"].includes(lower)) {
-    return handleSubmit(phone, session);
-  }
-  if (type === "text" && ["cancel","stop"].includes(lower)) {
+  // ── CANCEL ──────────────────────────────────────────────────────────────────
+  if (lower === "cancel") {
     await deleteSession(phone);
-    return sendAutoReply(session.chatId, `❌ SOS cancelled.\n\nType *hi* or *sos* to start again.`);
+    return reply(chatId, phone, "❌ Operation cancelled. Send *hi* for menu.");
   }
 
-  // Media handlers
-  if (type === "location") return handleLocation(message, session, phone);
-  if (type === "image")    return handleImage(message, session, phone);
-  if (type === "text")     return handleText(body, session, phone);
-
-  sendAutoReply(session.chatId, `⚠️ Unsupported type: *${type}*. Please send Location, Text, or Image.`);
-}
-
-// ── HANDLER: Trigger ──────────────────────────────────────────────────────────
-async function handleTrigger(phone, chatId) {
-  const session = {
-    phone,
-    chatId,
-    incidentData: {
-      type: "Other",
-      severity: "Low",
-      description: "",
-      location: { type: "Point", coordinates: [0, 0] },
-      imageUrl: null,
-      imageBase64: null,
-      mediaUploaded: [],
-      whatsappChatId: chatId,
-      whatsappPhone: phone,
-      forensics: null,
-      visionAnalysis: null,
-    },
-    step: "collecting",
-    createdAt: new Date(),
-  };
-
-  await setSession(phone, session);
-  console.log(`[WhatsApp SOS] ✅ Session created for ${phone}`);
-
-  await sendAutoReply(chatId,
-    `🚨 *EMERGENCY SOS SYSTEM* 🚨\n\n` +
-    `You are now in *SOS Mode*.\n\n` +
-    `*ALL 3 FIELDS ARE MANDATORY:*\n\n` +
-    `1️⃣ 📍 *Share your LOCATION*\n   → Tap 📎 → Location → Send Current Location\n\n` +
-    `2️⃣ 💬 *Type a DESCRIPTION*\n   → e.g. "Fire in building near MG Road"\n\n` +
-    `3️⃣ 📸 *Send an IMAGE/PHOTO*\n   → Photo of the incident (required)\n\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `When done, type *SUBMIT*\n` +
-    `To cancel, type *CANCEL*\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `⏰ Session expires in 1 hour. 🚀 *Start now!*`
-  );
-}
-
-// ── HANDLER: Location ─────────────────────────────────────────────────────────
-async function handleLocation(message, session, phone) {
-  const lat = message.location?.latitude  || 0;
-  const lng = message.location?.longitude || 0;
-
-  if (!lat || !lng) {
-    return sendAutoReply(session.chatId, `❌ Invalid location. Tap 📎 → Location → Send Current Location.`);
-  }
-
-  session.incidentData.location = { type: "Point", coordinates: [lng, lat] };
-  if (!session.incidentData.mediaUploaded.includes("location")) {
-    session.incidentData.mediaUploaded.push("location");
-  }
-
-  await setSession(phone, session);
-  console.log(`[WhatsApp SOS] 📍 Location saved: ${lat}, ${lng}`);
-  sendAutoReply(session.chatId,
-    `✅ *Location Saved!*\n📍 \`${lat.toFixed(4)}, ${lng.toFixed(4)}\`\n\n${buildProgress(session)}`
-  );
-}
-
-// ── HANDLER: Text / Description ───────────────────────────────────────────────
-async function handleText(text, session, phone) {
-  if (!text?.trim()) return;
-
-  let detectedType = detectTypeFromText(text);
-
-  // Try AI text intelligence (optional)
-  if (processTextIntelligence) {
-    try {
-      const intel = await processTextIntelligence(text);
-      detectedType = intel.detectedType || detectedType;
-      session.incidentData.description = intel.translatedText || text;
-    } catch {
-      session.incidentData.description = text;
-    }
-  } else {
-    session.incidentData.description = text;
-  }
-
-  session.incidentData.type = detectedType;
-  if (!session.incidentData.mediaUploaded.includes("text")) {
-    session.incidentData.mediaUploaded.push("text");
-  }
-
-  await setSession(phone, session);
-  console.log(`[WhatsApp SOS] 💬 Text saved — type detected: ${detectedType}`);
-  sendAutoReply(session.chatId,
-    `✅ *Description Saved!*\n🏷️ Type: *${detectedType}*\n\n${buildProgress(session)}`
-  );
-}
-
-// ── HANDLER: Image ────────────────────────────────────────────────────────────
-async function handleImage(message, session, phone) {
-  await sendAutoReply(session.chatId, "📸 Processing image...");
-
-  let imageUrl    = message.image?.link || message.image?.url || null;
-  let imageBase64 = null;
-
-  // Prefer direct URL; fall back to downloading by ID
-  if (!imageUrl && message.image?.id) {
-    try {
-      const media = await downloadMediaAsBase64(message.image.id);
-      if (media) {
-        imageBase64 = media.base64;
-        imageUrl    = media.dataUrl;
-        console.log(`[WhatsApp SOS] 📥 Image downloaded — ${media.size} bytes`);
+  // ── FLOW HANDLERS ───────────────────────────────────────────────────────────
+  switch (session.step) {
+    case "check_status":
+      return handleCheckStatus(chatId, phone, body);
+    case "report_title":
+      return handleReportTitle(chatId, phone, session, body);
+    case "report_category":
+      return handleReportCategory(chatId, phone, session, body);
+    case "report_location":
+      return handleReportLocation(chatId, phone, session, body);
+    case "report_confirm":
+      if (lower === "yes" || lower === "confirm" || lower === "submit") {
+        return handleReportSubmit(chatId, phone, session);
       }
-    } catch (err) {
-      console.warn("[WhatsApp SOS] ⚠️  Image download failed:", err.message);
-    }
-  }
-
-  if (!imageUrl && !imageBase64) {
-    return sendAutoReply(session.chatId, `❌ Failed to receive image. Please try again.`);
-  }
-
-  let forensics      = defaultForensics();
-  let visionAnalysis = defaultVision();
-  let analysisNote   = "Verified";
-
-  // Optional AI forensics + vision
-  if (analyzeForensics || analyzeVision) {
-    try {
-      const base64 = imageBase64 || (imageUrl?.includes("base64,") ? imageUrl.split("base64,")[1] : null);
-      if (base64) {
-        if (analyzeForensics) {
-          forensics = await analyzeForensics(Buffer.from(base64, "base64"), "UPLOAD", imageUrl);
-          console.log(`[WhatsApp SOS] 🔬 Forensics: ${forensics.verdict}`);
-        }
-        if (analyzeVision) {
-          visionAnalysis = await analyzeVision(base64);
-          console.log(`[WhatsApp SOS] 👁️  Vision: ${visionAnalysis.confidence}% confidence`);
-        }
-        analysisNote = forensics.isFake ? "⚠️ Authenticity concern detected" : "Verified authentic";
+      if (lower === "no" || lower === "edit") {
+        await deleteSession(phone);
+        return reply(chatId, phone, "❌ Report discarded. Send *1* to start over.");
       }
-    } catch (err) {
-      console.warn("[WhatsApp SOS] ⚠️  AI analysis error:", err.message);
-    }
+      return reply(chatId, phone, "❓ Please type *YES* to confirm or *NO* to cancel.");
+    default:
+      return sendMenu(chatId, phone);
   }
+}
 
-  session.incidentData.imageUrl      = imageUrl;
-  session.incidentData.imageBase64   = imageBase64;
-  session.incidentData.forensics     = forensics;
-  session.incidentData.visionAnalysis = visionAnalysis;
-
-  if (!session.incidentData.mediaUploaded.includes("image")) {
-    session.incidentData.mediaUploaded.push("image");
-  }
-
-  await setSession(phone, session);
-  sendAutoReply(session.chatId,
-    `✅ *Image Received!*\n📊 ${analysisNote}\n\n${buildProgress(session)}`
+// ── Menu ──────────────────────────────────────────────────────────────────────
+async function sendMenu(chatId, phone) {
+  await reply(chatId, phone,
+    `👋 *Welcome to Project Polis!* 🏛️\n\n` +
+    `What would you like to do today?\n\n` +
+    `1️⃣ *Report Issue* (File a new report)\n` +
+    `2️⃣ *Check Status* (Track by ID)\n` +
+    `3️⃣ *View Issues* (See latest 5)\n\n` +
+    `Reply with the *number* or the *command*.`
   );
 }
 
-// ── HANDLER: Submit ───────────────────────────────────────────────────────────
-async function handleSubmit(phone, session) {
-  const { incidentData, chatId } = session;
-
-  const hasLoc  = incidentData.location.coordinates[0] !== 0;
-  const hasText = !!incidentData.description?.trim();
-  const hasImg  = incidentData.mediaUploaded.includes("image");
-
-  if (!hasLoc || !hasText || !hasImg) {
-    const missing = [];
-    if (!hasLoc)  missing.push("📍 Location");
-    if (!hasText) missing.push("💬 Description");
-    if (!hasImg)  missing.push("📸 Photo");
-    return sendAutoReply(chatId,
-      `❌ *SUBMIT BLOCKED — ${missing.length}/3 Fields Missing*\n\n` +
-      `${missing.map(m => `   ❌ ${m}`).join("\n")}\n\n${buildProgress(session)}`
-    );
-  }
-
-  await sendAutoReply(chatId, "⏳ Submitting your report...");
-
-  const [lng, lat] = incidentData.location.coordinates;
-  const severity   = detectSeverity(incidentData.description);
-
+// ── View Latest Issues ────────────────────────────────────────────────────────
+async function handleViewIssues(chatId, phone) {
   try {
-    const issue = new Issue({
-      title:       incidentData.description.slice(0, 80),
-      description: incidentData.description,
-      category:    mapTypeToCategory(incidentData.type),
-      location:    `WhatsApp SOS — ${phone}`,
-      state:       null,
-      city:        null,
-      town:        null,
-      status:      (incidentData.forensics?.isFake) ? "Resolved" : "New",
-      votes:       0,
-      latlng:      { lat, lng },
-      // Store raw SOS metadata for reference
-      coordinates: { lat, lng },
+    const issues = await Issue.find().sort({ createdAt: -1 }).limit(5);
+    if (!issues.length) return reply(chatId, phone, "📭 No issues found in the system.");
+
+    let text = `📋 *Latest 5 Issues:*\n\n`;
+    issues.forEach((is, i) => {
+      const ref = is._id.toString().slice(-6).toUpperCase();
+      text += `${i + 1}. *#${ref}* - ${is.title}\n   📍 ${is.city || "Unknown"}\n   🔴 Status: ${is.status}\n\n`;
     });
+    text += `Send *status <id>* to see full details of an issue.`;
+    await reply(chatId, phone, text);
+  } catch (err) {
+    await reply(chatId, phone, "❌ Error fetching issues.");
+  }
+}
 
-    await issue.save();
+// ── Check Status ──────────────────────────────────────────────────────────────
+async function handleCheckStatus(chatId, phone, idInput) {
+  try {
+    const cleanId = idInput.trim().toUpperCase();
+    const issue = await Issue.findOne({ _id: { $regex: cleanId, $options: "i" } }).catch(() => null)
+      || await Issue.find().then(all => all.find(i => i._id.toString().slice(-6).toUpperCase() === cleanId));
+
+    if (!issue) return reply(chatId, phone, `❌ Issue *${idInput}* not found. Please check the ID.`);
+
+    const ref = issue._id.toString().slice(-6).toUpperCase();
+    const loc = [issue.town, issue.city, issue.state].filter(Boolean).join(", ");
+    
     await deleteSession(phone);
-
-    const refId = issue._id.toString().slice(-6).toUpperCase();
-    console.log(`[WhatsApp SOS] ✅ Issue created: ${issue._id}`);
-
-    sendAutoReply(chatId,
-      `✅ *REPORT SUBMITTED!*\n\n` +
-      `🆔 *Reference:* #${refId}\n\n` +
-      `📋 *Summary:*\n` +
-      `   📍 \`${lat.toFixed(4)}, ${lng.toFixed(4)}\`\n` +
-      `   🏷️ Type: *${incidentData.type}*\n` +
-      `   🚨 Severity: *${severity}*\n` +
-      `   📸 Media: ✅ ✅ ✅\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `🏥 Our team will review and respond.\n` +
-      `🙏 *Stay safe!*`
+    await reply(chatId, phone,
+      `📊 *Issue Status Report*\n\n` +
+      `🆔 ID: #${ref}\n` +
+      `📌 Title: ${issue.title}\n` +
+      `🏷️ Category: ${issue.category}\n` +
+      `📍 Location: ${loc || "N/A"}\n` +
+      `🔴 Status: *${issue.status}*\n` +
+      `👍 Votes: ${issue.votes}\n\n` +
+      `📅 Reported: ${new Date(issue.createdAt).toLocaleDateString("en-IN")}`
     );
   } catch (err) {
-    console.error("[WhatsApp SOS] ❌ Submission error:", err.message);
-    sendAutoReply(chatId, "❌ Error submitting report. Please try again or call emergency services.");
+    await reply(chatId, phone, "❌ Error checking status.");
   }
 }
 
-// ── Map incident type → Issue category ───────────────────────────────────────
-function mapTypeToCategory(type) {
-  const map = {
-    "Fire":               "Safety",
-    "Flood":              "Infrastructure",
-    "Traffic Accident":   "Safety",
-    "Medical Emergency":  "Safety",
-    "Infrastructure":     "Infrastructure",
-    "Other":              "Infrastructure",
-  };
-  return map[type] || "Infrastructure";
+// ── Reporting Flow: Step 1 ────────────────────────────────────────────────────
+async function startReportingFlow(chatId, phone) {
+  await setSession(phone, { step: "report_title", data: {} });
+  await reply(chatId, phone, "📝 *Step 1/3: Issue Title*\n\nPlease enter a short title for the issue (e.g., Pothole on Main Road).");
+}
+
+// ── Reporting Flow: Step 2 ────────────────────────────────────────────────────
+async function handleReportTitle(chatId, phone, session, body) {
+  if (body.length < 5) return reply(chatId, phone, "⚠️ Title too short. Please provide at least 5 characters.");
+  
+  session.data.title = body;
+  session.step = "report_category";
+  await setSession(phone, session);
+
+  await reply(chatId, phone,
+    `📂 *Step 2/3: Select Category*\n\n` +
+    `1. Infrastructure\n` +
+    `2. Sanitation\n` +
+    `3. Safety\n` +
+    `4. Greenery\n\n` +
+    `Reply with the number or name.`
+  );
+}
+
+// ── Reporting Flow: Step 3 ────────────────────────────────────────────────────
+async function handleReportCategory(chatId, phone, session, body) {
+  const map = { "1": "Infrastructure", "2": "Sanitation", "3": "Safety", "4": "Greenery" };
+  const cat = map[body] || CATEGORIES.find(c => c.toLowerCase() === body.toLowerCase());
+
+  if (!cat) return reply(chatId, phone, "⚠️ Invalid category. Please reply with 1, 2, 3, or 4.");
+
+  session.data.category = cat;
+  session.step = "report_location";
+  await setSession(phone, session);
+
+  await reply(chatId, phone,
+    `📍 *Step 3/3: Location*\n\n` +
+    `Please enter the location (Format: State, City, Town).\n` +
+    `Example: _Maharashtra, Mumbai, Dadar_`
+  );
+}
+
+// ── Reporting Flow: Step 4 (Confirm) ──────────────────────────────────────────
+async function handleReportLocation(chatId, phone, session, body) {
+  const parts = body.split(",").map(p => p.trim());
+  if (parts.length < 2) return reply(chatId, phone, "⚠️ Please provide at least State and City (e.g., Maharashtra, Pune).");
+
+  session.data.state = parts[0];
+  session.data.city = parts[1];
+  session.data.town = parts[2] || "";
+  session.step = "report_confirm";
+  await setSession(phone, session);
+
+  const summary = 
+    `📋 *Confirm Your Report:*\n` +
+    `📌 Title: ${session.data.title}\n` +
+    `🏷️ Category: ${session.data.category}\n` +
+    `📍 Location: ${[session.data.town, session.data.city, session.data.state].filter(Boolean).join(", ")}\n\n` +
+    `Is this correct? Type *YES* to submit or *NO* to cancel.`;
+  
+  await reply(chatId, phone, summary);
+}
+
+// ── Reporting Flow: Submit ────────────────────────────────────────────────────
+async function handleReportSubmit(chatId, phone, session) {
+  await reply(chatId, phone, "⏳ Filing your issue and generating AI analysis...");
+
+  try {
+    const d = session.data;
+    const issue = new Issue({
+      title: d.title,
+      category: d.category,
+      state: d.state,
+      city: d.city,
+      town: d.town,
+      location: d.state,
+      status: "New",
+      votes: 0
+    });
+    await issue.save();
+
+    // 🤖 AI Report
+    const aiReport = await generateAIReport(issue);
+    // 📄 PDF
+    const pdfBuffer = await generateIssuePDF(issue, aiReport);
+    
+    await deleteSession(phone);
+
+    const ref = issue._id.toString().slice(-6).toUpperCase();
+    const baseUrl = process.env.BACKEND_URL || "http://localhost:7979";
+    const pdfUrl = `${baseUrl}/api/issues/${issue._id}/pdf`;
+
+    await reply(chatId, phone,
+      `✅ *Issue Created Successfully!*\n\n` +
+      `🆔 Reference: *#${ref}*\n` +
+      `🤖 *AI Analysis Summary:* \n${aiReport.slice(0, 200)}...\n\n` +
+      `📄 *Download Full Report:*\n${pdfUrl}\n\n` +
+      `🙏 Thank you for helping improve your city!`
+    );
+
+    // Email admin
+    if (process.env.ADMIN_EMAIL) {
+      sendIssueCreatedEmail(issue, process.env.ADMIN_EMAIL, pdfBuffer).catch(console.error);
+    }
+  } catch (err) {
+    console.error("[WA BOT] Submit error:", err);
+    await deleteSession(phone);
+    await reply(chatId, phone, "❌ Failed to create issue. Please try again later.");
+  }
 }
 
 export default { handleIncomingWhatsAppMessage };

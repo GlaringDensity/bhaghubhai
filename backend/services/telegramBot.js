@@ -1,13 +1,21 @@
 import { Telegraf } from "telegraf";
 import Issue from "../models/issue.model.js";
+import { getSession, setSession, deleteSession } from "../utils/session-manager.js";
+import { generateIssuePDF } from "./pdfService.js";
+import { sendIssueCreatedEmail } from "./emailService.js";
+import { generateAIReport } from "./aiService.js";
+import axios from "axios";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 // ==================== SINGLETON GUARD ====================
-// Prevents multiple instances during nodemon hot-reloads
 let bot = null;
 let isBotRunning = false;
+
+const CATEGORIES = ["Infrastructure", "Sanitation", "Safety", "Greenery"];
+const GEMMA_URL = process.env.GEMMA_URL || "http://localhost:11434/api/generate";
+const GEMMA_MODEL = process.env.GEMMA_MODEL || "gemma4:31b-cloud";
 
 const getBot = () => {
   if (!bot) {
@@ -19,12 +27,17 @@ const getBot = () => {
 };
 
 // ==================== HELPERS ====================
-const buildProgressBar = (count, max = 10) => {
+const buildProgressBar = (count, max = 100) => {
   const filled = Math.min(Math.round((count / max) * 10), 10);
   return "█".repeat(filled) + "░".repeat(10 - filled);
 };
 
-const statusEmoji = { New: "🆕", "In Progress": "⚡", Resolved: "✅" };
+const FLAG_EMOJI = {
+  'New': '🚩',
+  'In Progress': '🏳️',
+  'Resolved': '🏁',
+};
+
 const categoryEmoji = {
   Infrastructure: "🏗️",
   Sanitation: "♻️",
@@ -32,15 +45,14 @@ const categoryEmoji = {
   Greenery: "🌿",
 };
 
+
 const formatIssue = (issue, index) => {
-  const loc =
-    [issue.town, issue.city, issue.state].filter(Boolean).join(" › ") ||
-    issue.location;
+  const loc = [issue.town, issue.city, issue.state].filter(Boolean).join(" › ") || issue.location;
   const emoji = categoryEmoji[issue.category] || "📌";
-  const sEmoji = statusEmoji[issue.status] || "📋";
+  const flag = FLAG_EMOJI[issue.status] || '📍';
   return (
-    `${index + 1}. ${emoji} *${issue.title}*\n` +
-    `   ${sEmoji} ${issue.status}  |  🏷️ ${issue.category}\n` +
+    `${index + 1}. ${flag} ${emoji} *${issue.title}*\n` +
+    `   Status: ${issue.status}  |  🏷️ ${issue.category}\n` +
     `   📍 ${loc}\n` +
     `   🆔 \`${issue._id}\``
   );
@@ -50,257 +62,139 @@ const formatIssue = (issue, index) => {
 function registerHandlers(botInstance) {
   console.log("🔧 Registering Telegram bot handlers...");
 
-  // ── /start ────────────────────────────────────────────────────────────────
   botInstance.command(["start", "help"], (ctx) => {
-    const name = ctx.from?.first_name || "Citizen";
     ctx.replyWithMarkdown(
-      `👋 Welcome, *${name}*!\n\n` +
-        `I'm the *Project Polis* bot — your civic issue tracker.\n\n` +
-        `📋 *Available Commands:*\n` +
-        `/issues — Latest 5 open issues\n` +
-        `/status <id> — Check a specific issue\n` +
-        `/stats — View overall statistics\n` +
-        `/recent — 5 most recently created issues\n` +
-        `/help — Show this message`
+      `👋 Welcome to *Project Polis*!\n\n` +
+      `📋 *Commands:*\n` +
+      `/report — Start filing a new civic issue\n` +
+      `/issues — List open issues\n` +
+      `/stats — View system stats\n` +
+      `/status <id> — Check specific issue\n` +
+      `/cancel — Stop current report`
     );
   });
 
-  // ── /issues ───────────────────────────────────────────────────────────────
+  botInstance.command("report", async (ctx) => {
+    const chatId = ctx.chat.id;
+    await setSession(chatId, { step: "category", data: {} });
+    ctx.replyWithMarkdown(
+      `🏛️ *Step 1/4: Select Category*\n\n` +
+      `1. Infrastructure\n` +
+      `2. Sanitation\n` +
+      `3. Safety\n` +
+      `4. Greenery\n\n` +
+      `Reply with the number.`
+    );
+  });
+
   botInstance.command("issues", async (ctx) => {
     try {
-      const issues = await Issue.find({ status: { $ne: "Resolved" } })
-        .sort({ createdAt: -1 })
-        .limit(5);
-
-      if (issues.length === 0) {
-        return ctx.reply("✅ No open issues right now — great job!");
-      }
-
-      const lines = issues.map(formatIssue);
-      ctx.replyWithMarkdown(
-        `📋 *Open Issues (${issues.length})*\n\n${lines.join("\n\n")}`
-      );
-    } catch (err) {
-      console.error("[Telegram] /issues error:", err.message);
-      ctx.reply("❌ Failed to fetch issues. Please try again.");
-    }
+      const issues = await Issue.find({ status: { $ne: "Resolved" } }).sort({ createdAt: -1 }).limit(5);
+      if (issues.length === 0) return ctx.reply("✅ No open issues!");
+      ctx.replyWithMarkdown(`📋 *Latest Open Issues*\n\n${issues.map(formatIssue).join("\n\n")}`);
+    } catch (err) { ctx.reply("❌ Error fetching issues."); }
   });
 
-  // ── /recent ───────────────────────────────────────────────────────────────
-  botInstance.command("recent", async (ctx) => {
-    try {
-      const issues = await Issue.find().sort({ createdAt: -1 }).limit(5);
-
-      if (issues.length === 0) {
-        return ctx.reply("📭 No issues reported yet.");
-      }
-
-      const lines = issues.map(formatIssue);
-      ctx.replyWithMarkdown(
-        `🕐 *Recently Reported (${issues.length})*\n\n${lines.join("\n\n")}`
-      );
-    } catch (err) {
-      console.error("[Telegram] /recent error:", err.message);
-      ctx.reply("❌ Failed to fetch issues.");
-    }
-  });
-
-  // ── /status <id> ──────────────────────────────────────────────────────────
-  botInstance.command("status", async (ctx) => {
-    const args = ctx.message.text.split(" ").slice(1);
-    const issueId = args[0]?.trim();
-
-    if (!issueId) {
-      return ctx.replyWithMarkdown(
-        "⚠️ Usage: `/status <issue_id>`\nGet an ID from `/issues`."
-      );
-    }
-
-    try {
-      const issue = await Issue.findById(issueId);
-      if (!issue) {
-        return ctx.replyWithMarkdown(
-          `❓ Issue \`${issueId}\` not found.`,
-          { parse_mode: "Markdown" }
-        );
-      }
-
-      const loc =
-        [issue.town, issue.city, issue.state].filter(Boolean).join(" › ") ||
-        issue.location;
-      const sEmoji = statusEmoji[issue.status] || "📋";
-      const cEmoji = categoryEmoji[issue.category] || "📌";
-
-      ctx.replyWithMarkdown(
-        `${sEmoji} *Issue Status Report*\n\n` +
-          `📌 *Title:* ${issue.title}\n` +
-          `${cEmoji} *Category:* ${issue.category}\n` +
-          `${sEmoji} *Status:* ${issue.status}\n` +
-          `📍 *Location:* ${loc}\n` +
-          `👍 *Votes:* ${issue.votes}\n` +
-          `🗓️ *Reported:* ${new Date(issue.createdAt).toLocaleDateString("en-IN")}\n\n` +
-          `📝 ${issue.description || "_No description_"}\n\n` +
-          `🆔 \`${issue._id}\``
-      );
-    } catch (err) {
-      console.error("[Telegram] /status error:", err.message);
-      ctx.reply("❌ Invalid issue ID or server error.");
-    }
-  });
-
-  // ── /stats ────────────────────────────────────────────────────────────────
   botInstance.command("stats", async (ctx) => {
     try {
-      const [total, resolved, inProgress, newCount] = await Promise.all([
-        Issue.countDocuments(),
-        Issue.countDocuments({ status: "Resolved" }),
-        Issue.countDocuments({ status: "In Progress" }),
-        Issue.countDocuments({ status: "New" }),
-      ]);
-
+      const [total, resolved] = await Promise.all([Issue.countDocuments(), Issue.countDocuments({ status: "Resolved" })]);
       const rate = total > 0 ? Math.round((resolved / total) * 100) : 0;
-      const bar = buildProgressBar(rate, 100);
+      ctx.replyWithMarkdown(`📊 *Stats*\nTotal: ${total}\nResolved: ${resolved}\nRate: ${rate}%\n\`${buildProgressBar(rate)}\``);
+    } catch (err) { ctx.reply("❌ Error."); }
+  });
 
-      ctx.replyWithMarkdown(
-        `📊 *Project Polis — Dashboard*\n\n` +
-          `📋 Total Issues: *${total}*\n` +
-          `🆕 New: *${newCount}*\n` +
-          `⚡ In Progress: *${inProgress}*\n` +
-          `✅ Resolved: *${resolved}*\n\n` +
-          `📈 Resolution Rate: *${rate}%*\n` +
-          `\`${bar}\``
-      );
-    } catch (err) {
-      console.error("[Telegram] /stats error:", err.message);
-      ctx.reply("❌ Failed to fetch statistics.");
+  botInstance.command("cancel", async (ctx) => {
+    await deleteSession(ctx.chat.id);
+    ctx.reply("❌ Report cancelled.");
+  });
+
+  botInstance.on("text", async (ctx) => {
+    const chatId = ctx.chat.id;
+    const session = await getSession(chatId);
+    if (!session) return;
+
+    const text = ctx.message.text.trim();
+    if (text.startsWith("/")) return;
+
+    switch (session.step) {
+      case "category":
+        const cat = CATEGORIES[parseInt(text) - 1];
+        if (!cat) return ctx.reply("⚠️ Send 1, 2, 3, or 4.");
+        session.data.category = cat;
+        session.step = "title";
+        await setSession(chatId, session);
+        ctx.reply(`✅ Category: ${cat}\n\n*Step 2/4: Title*\nSend a short title.`);
+        break;
+
+      case "title":
+        if (text.length < 5) return ctx.reply("⚠️ Title too short (min 5).");
+        session.data.title = text;
+        session.step = "description";
+        await setSession(chatId, session);
+        ctx.reply(`✅ Title: ${text}\n\n*Step 3/4: Description*\nDescribe the issue.`);
+        break;
+
+      case "description":
+        if (text.length < 10) return ctx.reply("⚠️ Description too short.");
+        session.data.description = text;
+        session.step = "location";
+        await setSession(chatId, session);
+        ctx.reply(`✅ Description saved.\n\n*Step 4/4: Location*\nFormat: State, City, Town\nEx: Maharashtra, Pune, Kothrud`);
+        break;
+
+      case "location":
+        const parts = text.split(",").map(p => p.trim());
+        if (parts.length < 2) return ctx.reply("⚠️ Need State and City.");
+        session.data.state = parts[0];
+        session.data.city = parts[1];
+        session.data.town = parts[2] || "";
+        
+        await ctx.reply("⏳ Filing issue and generating AI report...");
+        
+        try {
+          const issue = new Issue({
+            ...session.data,
+            location: session.data.state,
+            status: "New"
+          });
+          await issue.save();
+          
+          const aiReport = await generateAIReport(issue);
+          const pdfBuffer = await generateIssuePDF(issue, aiReport);
+          
+          await deleteSession(chatId);
+          
+          const baseUrl = process.env.BACKEND_URL || "http://localhost:7979";
+          const pdfUrl = `${baseUrl}/api/issues/${issue._id}/pdf`;
+          
+          ctx.replyWithMarkdown(
+            `✅ *Issue Created!* #${issue._id.toString().slice(-6).toUpperCase()}\n\n` +
+            `🤖 *AI Analysis:* \n${aiReport.slice(0, 500)}...\n\n` +
+            `📄 *Download Report:* [Click here](${pdfUrl})`
+          );
+
+          if (process.env.ADMIN_EMAIL) {
+            sendIssueCreatedEmail(issue, process.env.ADMIN_EMAIL, pdfBuffer);
+          }
+        } catch (err) {
+          ctx.reply("❌ Failed to save issue.");
+        }
+        break;
     }
   });
 
-  // ── Polling error handler ─────────────────────────────────────────────────
-  botInstance.catch((err, ctx) => {
-    console.error(`[Telegram] Update error for ${ctx.updateType}:`, err.message);
-  });
-
-  console.log("✅ Telegram bot handlers registered");
+  botInstance.catch((err) => console.error("Telegram error:", err));
 }
 
-// ==================== SEND HELPERS ====================
-
-/**
- * Send a text message to a Telegram chat
- * @param {string|number} chatId
- * @param {string} text  (Markdown supported)
- */
-export const sendTelegramMessage = async (chatId, text) => {
-  if (!chatId) {
-    console.warn("[Telegram] ⚠️  No chatId — skipping");
-    return;
-  }
-  try {
-    const botInstance = getBot();
-    const res = await botInstance.telegram.sendMessage(chatId, text, {
-      parse_mode: "Markdown",
-    });
-    console.log(`[Telegram] ✅ Sent to ${chatId} — msgId: ${res.message_id}`);
-    return res;
-  } catch (err) {
-    console.error("[Telegram] ❌ Send failed:", err.message);
-    throw err;
-  }
-};
-
-/**
- * Send a new-issue notification to the admin Telegram chat
- * @param {object} issue - Saved Issue document
- */
-export const sendIssueCreatedTelegram = async (issue) => {
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!chatId) {
-    console.warn("[Telegram] ⚠️  TELEGRAM_CHAT_ID not set — skipping");
-    return;
-  }
-
-  const loc =
-    [issue.town, issue.city, issue.state].filter(Boolean).join(" › ") ||
-    issue.location;
-  const cEmoji = categoryEmoji[issue.category] || "📌";
-
-  const text =
-    `🚨 *New Issue Reported — Project Polis*\n\n` +
-    `${cEmoji} *${issue.title}*\n` +
-    `🏷️ ${issue.category}  |  🆕 ${issue.status}\n` +
-    `📍 ${loc}\n` +
-    `🗓️ ${new Date(issue.createdAt).toLocaleString("en-IN")}\n\n` +
-    `📝 ${issue.description || "No description"}\n\n` +
-    `🆔 \`${issue._id}\`\n` +
-    `Use /status ${issue._id} to check later.`;
-
-  return sendTelegramMessage(chatId, text);
-};
-
-// ==================== START BOT (POLLING with 409 guard) ====================
 export const startBot = async () => {
-  if (isBotRunning) {
-    console.log("⚠️ Telegram bot already running — skipping re-launch");
-    return;
-  }
-
-  if (!process.env.TELEGRAM_BOT_TOKEN) {
-    console.warn("[Telegram] ⚠️  TELEGRAM_BOT_TOKEN not set — bot disabled");
-    return;
-  }
-
+  if (isBotRunning || !process.env.TELEGRAM_BOT_TOKEN) return;
   const botInstance = getBot();
-
   try {
-    // Step 1: Clear any stale webhook that blocks polling
-    await botInstance.telegram.deleteWebhook({ drop_pending_updates: false });
-    console.log("[Telegram] 🔧 Stale webhook cleared");
-
-    // Step 2: Brief delay so Telegram releases previous getUpdates session
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    // Step 3: Launch polling
-    await botInstance.launch({
-      allowedUpdates: ["message", "callback_query"],
-    });
-
+    await botInstance.telegram.deleteWebhook({ drop_pending_updates: true });
+    await botInstance.launch();
     isBotRunning = true;
-    console.log("[Telegram] 🤖 Bot started via polling ✅");
-
-    // Step 4: Graceful shutdown
-    process.once("SIGINT", () => {
-      console.log("[Telegram] 🛑 SIGINT — stopping bot...");
-      botInstance.stop("SIGINT");
-      isBotRunning = false;
-    });
-    process.once("SIGTERM", () => {
-      console.log("[Telegram] 🛑 SIGTERM — stopping bot...");
-      botInstance.stop("SIGTERM");
-      isBotRunning = false;
-    });
-  } catch (err) {
-    isBotRunning = false;
-    if (err.message?.includes("409")) {
-      console.warn(
-        "[Telegram] ⚠️  409 Conflict — another session active. Retrying in 5s..."
-      );
-      setTimeout(() => startBot(), 5000);
-    } else {
-      console.error("[Telegram] ❌ Bot failed to start:", err.message);
-    }
-  }
+    console.log("🤖 Telegram Bot started ✅");
+  } catch (err) { console.error("Bot start failed:", err.message); }
 };
 
-// ==================== WEBHOOK HANDLER (alternative to polling) ====================
-export const handleTelegramWebhook = async (req, res) => {
-  try {
-    await getBot().handleUpdate(req.body);
-    res.status(200).send("OK");
-  } catch (err) {
-    console.error("[Telegram] ❌ Webhook error:", err.message);
-    res.status(500).send("Error");
-  }
-};
-
-export default { startBot, handleTelegramWebhook, sendTelegramMessage, sendIssueCreatedTelegram };
+export default { startBot };

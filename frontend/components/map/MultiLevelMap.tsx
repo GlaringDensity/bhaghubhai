@@ -4,7 +4,7 @@ import India from '@svg-maps/india';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, MapPin, ZoomIn } from 'lucide-react';
 import { useMapNav } from '@/hooks/useMapState';
-import { useIssueStore } from '@/lib/store/useIssueStore';
+import { useIssueStore, useFilteredIssues } from '@/lib/store/useIssueStore';
 import { stateCities } from '@/lib/data/stateCities';
 import { cityTowns } from '@/lib/data/cityTowns';
 import Breadcrumb from './Breadcrumb';
@@ -41,17 +41,19 @@ function lerpViewBox(from: string, to: string, t: number) {
   return `${f.x + (g.x - f.x) * ease} ${f.y + (g.y - f.y) * ease} ${f.w + (g.w - f.w) * ease} ${f.h + (g.h - f.h) * ease}`;
 }
 
+
 // ─── Town Plane ───────────────────────────────────────────────────────────────
 const TownPlane: React.FC<{
   state: string; city: string; town: string;
   onPlacePin: (x: number, y: number) => void;
 }> = ({ state, city, town, onPlacePin }) => {
-  const { issues } = useIssueStore();
+  const filteredIssues = useFilteredIssues();
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const pins = issues.filter(
+  const pins = filteredIssues.filter(
     i => i.state === state && i.city === city && i.town === town && i.pinX != null
   );
+// ... (rest of TownPlane remains same)
 
   const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -100,7 +102,14 @@ const TownPlane: React.FC<{
 
         {/* Existing pins */}
         {pins.map((issue: any) => (
-          <Pin key={issue._id} x={issue.pinX} y={issue.pinY} category={issue.category} title={issue.title} />
+          <Pin 
+            key={issue._id} 
+            x={issue.pinX} 
+            y={issue.pinY} 
+            category={issue.category} 
+            status={issue.status}
+            title={issue.title} 
+          />
         ))}
       </svg>
     </motion.div>
@@ -145,7 +154,7 @@ const CityView: React.FC<{
   onTownClick: (town: string) => void;
 }> = ({ state, city, onTownClick }) => {
   const towns = cityTowns[city] || ['Zone A', 'Zone B', 'Zone C', 'Zone D', 'Zone E', 'Zone F'];
-  const { issues } = useIssueStore();
+  const filteredIssues = useFilteredIssues();
   const [hoveredZone, setHoveredZone] = useState<string | null>(null);
 
   const cols = Math.min(GRID_COLS, towns.length);
@@ -204,7 +213,7 @@ const CityView: React.FC<{
           const row = Math.floor(idx / cols);
           const x = PAD + col * (ZONE_W + ZONE_GAP_X);
           const y = PAD + HEADER_H + row * (ZONE_H + ZONE_GAP_Y);
-          const count = issues.filter(i => i.state === state && i.city === city && i.town === town).length;
+          const count = filteredIssues.filter(i => i.state === state && i.city === city && i.town === town).length;
           const isHov = hoveredZone === town;
           const bg = zoneBg(count, isHov);
           const border = zoneBorder(count, isHov);
@@ -305,13 +314,13 @@ const StateView: React.FC<{
   onCityClick: (city: string) => void;
 }> = ({ stateName, viewBox, vbWidth, vbHeight, onCityClick }) => {
   const cities = stateCities[stateName] || [];
-  const { issues } = useIssueStore();
+  const filteredIssues = useFilteredIssues();
 
   return (
     <>
       {cities.map((city, idx) => {
         const svgPos = geoToSvg(city.lat, city.lng, vbWidth, vbHeight);
-        const issueCount = issues.filter(i => i.state === stateName && i.city === city.name).length;
+        const issueCount = filteredIssues.filter(i => i.state === stateName && i.city === city.name).length;
         const vb = parseVB(viewBox);
         // Only render if within zoomed viewBox
         if (svgPos.x < vb.x - 20 || svgPos.x > vb.x + vb.w + 20) return null;
@@ -349,6 +358,8 @@ const StateView: React.FC<{
 // ─── Main MultiLevelMap ───────────────────────────────────────────────────────
 const MultiLevelMap: React.FC = () => {
   const nav = useMapNav();
+  const { searchQuery } = useIssueStore();
+  const filteredIssues = useFilteredIssues();
   const svgRef = useRef<SVGSVGElement>(null);
   const animRef = useRef<number>();
   const [displayVB, setDisplayVB] = useState(India.viewBox);
