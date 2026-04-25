@@ -109,7 +109,7 @@ const Navbar = () => {
           outfit.className
         )}
       >
-        <div className="flex h-20 items-center justify-between px-5 md:px-8">
+        <div className="flex h-16 items-center justify-between px-5 md:px-8">
           <Link
             href="/"
             className="flex items-center hover:opacity-80 transition-opacity flex-shrink-0"
@@ -117,9 +117,9 @@ const Navbar = () => {
             <Image
               src="/images/cicvicsync.png"
               alt="CivicSync Logo"
-              width={240}
-              height={72}
-              className="h-12 sm:h-14 w-auto object-contain dark:invert"
+              width={400}
+              height={120}
+              className="h-20 sm:h-24 w-auto object-contain dark:invert"
               priority
             />
           </Link>

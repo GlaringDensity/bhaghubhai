@@ -84,12 +84,17 @@ export default function HomePage() {
   return (
     <main className={`min-h-screen relative bg-[#F8FAFC] dark:bg-[#05050A] text-[#0F172A] dark:text-[#F8FAFC] transition-colors duration-500 pt-32 pb-20 ${spaceGrotesk.className}`}>
       
-      {/* Dynamic Background Glows and Texture */}
+      {/* Dynamic Background Glows and Grid Texture */}
       <div 
-        className="absolute inset-0 pointer-events-none opacity-[0.4] dark:opacity-[0.15]" 
+        className="absolute inset-0 pointer-events-none opacity-100 dark:opacity-[0.6]" 
         style={{ 
-          backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(148, 163, 184, 0.4) 1px, transparent 0)', 
-          backgroundSize: '24px 24px' 
+          backgroundImage: `
+            linear-gradient(to right, rgba(148, 163, 184, 0.35) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(148, 163, 184, 0.35) 1px, transparent 1px)
+          `,
+          backgroundSize: '48px 48px',
+          maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)'
         }} 
       />
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -114,7 +119,7 @@ export default function HomePage() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.1, ease: "easeOut" }}
-          className={`text-5xl md:text-7xl lg:text-[6.5rem] font-black tracking-tighter mb-8 leading-[1.05] ${outfit.className}`}
+          className={`text-4xl md:text-6xl lg:text-7xl font-black tracking-tighter mb-8 leading-[1.1] ${outfit.className}`}
         >
           Civic Action, <br />
           <span className="bg-gradient-to-r from-cyan-400 via-blue-500 to-fuchsia-500 bg-clip-text text-transparent drop-shadow-sm">
@@ -164,17 +169,14 @@ export default function HomePage() {
               <Globe2 className="w-5 h-5 text-cyan-500"/> Geospatial Heatmap View
             </div>
           </div>
-          {/* Use regular img tag to avoid fill issues */}
-          <div className="w-full" style={{ height: '500px', position: 'relative' }}>
-            <Image 
-              src="/images/map_ui.png" 
-              alt="Civic Sync Map Interface" 
-              fill 
-              className="object-cover transition-transform duration-700 group-hover:scale-105"
-              priority
-              sizes="(max-width: 1200px) 100vw, 1200px"
-            />
-          </div>
+          {/* Plain img — shows full image, zero cropping */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/map_ui.png"
+            alt="Civic Sync Map Interface"
+            className="w-full h-auto block transition-transform duration-700 group-hover:scale-105"
+            style={{ display: 'block', lineHeight: 0 }}
+          />
         </motion.div>
       </section>
 
@@ -322,7 +324,27 @@ export default function HomePage() {
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 lg:gap-8">
+        {/* Mobile: Horizontal scroll snap carousel. Desktop: 4-column grid */}
+        <div className="flex sm:hidden overflow-x-auto snap-x snap-mandatory pb-8 -mx-6 px-6 gap-4 scrollbar-hide">
+          {categories.map((cat, idx) => (
+            <motion.div
+              key={cat.name}
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ delay: idx * 0.1, duration: 0.5 }}
+              className={`flex-none w-[85vw] max-w-[280px] snap-center p-8 rounded-[2rem] bg-white dark:bg-[#0B0F19] border border-[#E2E8F0] dark:border-white/10 flex flex-col items-center text-center shadow-lg hover:${cat.shadow} group`}
+            >
+              <div className={`mb-6 p-5 rounded-2xl border ${cat.color}`}>
+                {cat.icon}
+              </div>
+              <h3 className={`font-bold text-xl ${outfit.className}`}>{cat.name}</h3>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Desktop Grid */}
+        <div className="hidden sm:grid grid-cols-2 md:grid-cols-4 gap-6 lg:gap-8">
           {categories.map((cat, idx) => (
             <motion.div
               key={cat.name}
@@ -332,9 +354,13 @@ export default function HomePage() {
               transition={{ delay: idx * 0.1, duration: 0.6 }}
               className={`p-10 rounded-[2.5rem] bg-white dark:bg-[#0B0F19] border border-[#E2E8F0] dark:border-white/10 flex flex-col items-center text-center shadow-lg hover:${cat.shadow} transition-all duration-500 hover:-translate-y-3 group`}
             >
-              <div className={`mb-8 p-6 rounded-3xl border ${cat.color} group-hover:scale-110 transition-transform duration-500`}>
+              <motion.div 
+                whileHover={{ scale: 1.15, rotate: 5 }}
+                transition={{ type: "spring", stiffness: 300 }}
+                className={`mb-8 p-6 rounded-3xl border ${cat.color}`}
+              >
                 {cat.icon}
-              </div>
+              </motion.div>
               <h3 className={`font-bold text-2xl ${outfit.className}`}>{cat.name}</h3>
             </motion.div>
           ))}
