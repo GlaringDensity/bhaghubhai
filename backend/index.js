@@ -7,6 +7,7 @@ import UserRouter from "./routes/user.routes.js";
 import IssueRouter from "./routes/issue.routes.js";
 import cookieParser from "cookie-parser";
 import { promises as dns } from "dns";
+import { startBot as startTelegramBot } from "./services/telegramBot.js";
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -26,7 +27,7 @@ app.use(
       "http://localhost:3002",
       "http://localhost:5174",
     ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     credentials: true,
   }),
 );
@@ -34,13 +35,29 @@ app.use("/api/auth", AuthRouter);
 app.use("/api/user", UserRouter);
 app.use("/api/issues", IssueRouter);
 
+// WhatsApp SOS Webhook
+app.post("/api/whatsapp/webhook", (await import("./controller/whatsappSosController.js")).default.handleIncomingWhatsAppMessage);
+
 app.get("/", (req, res) => {
   res.send("API is running...");
 });
 
 const startServer = async () => {
   try {
+    // ── ENV Validation ─────────────────────────────────────────────────────
+    console.log("\n─── ENV CHECK ─────────────────────────────────────────");
+    console.log("MONGODB:  ", !!process.env.MONGODB_URL);
+    console.log("JWT:      ", !!process.env.JWT_SECRET);
+    console.log("WHAPI:    ", !!process.env.WHAPI_TOKEN);
+    console.log("TELEGRAM: ", !!process.env.TELEGRAM_BOT_TOKEN);
+    console.log("EMAIL:    ", !!process.env.SMTP_USER);
+    console.log("──────────────────────────────────────────────────────\n");
+
     await ConnectDB();
+
+    // ── Init Telegram Bot (Telegraf, singleton, 409-safe) ───────────────────
+    startTelegramBot();
+
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });

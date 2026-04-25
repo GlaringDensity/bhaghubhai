@@ -5,6 +5,7 @@ import {
   updateIssueStatus,
   upvoteIssue,
   deleteIssue,
+  downloadIssuePDF,
 } from "../controller/issue.controller.js";
 import isAuth from "../middleware/auth.middleware.js";
 
@@ -15,5 +16,6 @@ router.post("/", isAuth, createIssue);
 router.patch("/:id", isAuth, updateIssueStatus);
 router.post("/:id/upvote", upvoteIssue); // Upvoting might be public or protected, usually public with rate limiting but let's keep it simple
 router.delete("/:id", isAuth, deleteIssue);
+router.get("/:id/pdf", isAuth, downloadIssuePDF);  // Download PDF report
 
 export default router;

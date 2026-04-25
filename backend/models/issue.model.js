@@ -22,6 +22,10 @@ const issueSchema = new Schema(
     town: { type: String },
     pinX: { type: Number },  // SVG x coordinate in town plane
     pinY: { type: Number },  // SVG y coordinate in town plane
+    latlng: {
+      lat: { type: Number },
+      lng: { type: Number }
+    },
     coordinates: {
       lat: { type: Number },
       lng: { type: Number }
